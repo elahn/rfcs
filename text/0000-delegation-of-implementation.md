@@ -6,7 +6,7 @@
 # Summary
 [summary]: #summary
 
-Provide a syntactic sugar to automatically implement a given trait `Tr` using a pre-existing type implementing `Tr`. The purpose is to improve code reuse in rust without damaging the orthogonality of already existing concepts or adding new ones.
+Syntax sugar to automatically implement a given trait `Tr` using a pre-existing type implementing `Tr`. The purpose is to improve code reuse in rust without damaging the orthogonality of existing concepts or adding new ones.
 
 # Motivation
 [motivation]: #motivation
@@ -28,7 +28,28 @@ impl Encodable for HighResolutionStamp {
     }
 }
 ```
-We can see a recurring pattern where the implementation of a method only consists in applying the same method to a subfield or more generally to an expression containing `self`. Those are examples of the well known [composition pattern][object_composition]. It has a lot of advantages but unfortunately it also implies writing explicit boilerplate code again and again. In a classical oop language we could also have opted for inheritance for similar cases. Inheritance comes with its own bunch of problems and limitations but at least it allows a straightforward form of code reuse: any subclass implicitly imports the public methods of its superclass(es).
+We can see a recurring pattern where the implementation of a method only consists in applying the same method to a subfield or more generally to an expression containing `self`. Those are examples of the well known [composition pattern][object_composition]. It has a lot of advantages, but unfortunately requires writing boilerplate code again and again. In a classical OOP language we could also have opted for inheritance for similar cases. Inheritance comes with its own bunch of problems and limitations but at least it allows a straightforward form of code reuse: any subclass implicitly imports the public methods of its superclass(es).
+
+One of the issues frequently mentioned when newcomers are learning Rust, is "I can do this easily in OOP, but is it even possible in Rust? And how the heck do I do it?" The lack of documentation/guides on this is a known issue and is being worked on, but it's not *just* a documentation issue.
+
+OOP is used to solve real problems and if we want people to choose Rust in any of the domains they proliferate in, we need good solutions for those problems. As @withoutboats said:
+
+> One aspect of inheritance-based polymorphism systems is that it is very easy to re-use code that has already been written as you are extending a system. The specific mechanism of re-use is connected to the more detrimental aspects of inheritance - the way it can result in ill-considered coupling and overly gregarious sharing of details which should be abstracted away.
+> 
+> To avoid the pitfalls that many inheritance-based languages have fallen into, Rust has avoided that form of polymorphism entirely, preferring instead a combination of behaviorally constrained parametric polymorphism (traits and generics) and straightforward type composition.
+> 
+> Avoiding inheritance has resulted in two major costs for users of Rust:
+> 
+> - There are patterns enabled by inheritance which have no clean equivalent in Rust.
+> - The forms of abstraction Rust suggests can result in more boilerplate and less convenient code re-use than inheritance.
+> 
+> We've focused a lot of attention on resolving the first problem, which is what has driven the efforts around specialization and the like. But there hasn't been nearly as much attention at resolving the second problem. This RFC is aimed squarely at that problem, so thanks @contactomorph for considering that question.
+
+Efficient code reuse is about making us more productive, not just in terms of typing less, which is nice, but being able to clearly express *intent* in our code, making it easier to read, understand, refactor and prototype quickly. It also enables DRY and is in-line with the [2017 Roadmap](https://github.com/rust-lang/rust-roadmap): 
+
+> In short, productivity should be a core value of Rust. By the end of 2017, let's try to earn the slogan: 
+> 
+> - Rust: fast, reliable, productive—pick three.
 
 Rust has no inheritance (yet) and as a result composition is an even more interesting pattern for factoring code than in other languages. In fact it is already used in many places. Some (approximate) figures:
 
@@ -38,7 +59,7 @@ rust-lang/rust    | 845                                |
 rust-lang/cargo   | 38                                 |
 servo/servo       | 314                                |
 
-It would be an improvement if we alleviated the composition pattern so that it can remain/become a privileged tool for code reuse while being as terse as the inheritance-based equivalent. Related discussions:
+By providing syntax sugar for the composition pattern, it can remain/become a privileged tool for code reuse while being as terse as the inheritance-based equivalent. Related discussions:
 * [pre-rfc][pre_rfc]
 * [some related reddit thread][comp_over_inh] (I didn't participate in)
 
@@ -49,42 +70,295 @@ It would be an improvement if we alleviated the composition pattern so that it c
 # Detailed design
 [design]: #detailed-design
 
-## Syntax example
+## Delegate a trait impl to a struct field
 
-Let's add a syntactic sugar so that the examples above become:
+Syntax sugar for the examples above:
+
+### Syntax 1
+
 ```rust
 impl<'a> Hash for H<'a> {
     use self.name;
 }
-```
-and
-```rust
+
 impl Encodable for HighResolutionStamp {
     use self.0;
 }
 ```
 
-Again this feature adds no new concept. It just simplifies an existing code pattern. However it is interesting to understand the similarities and differences with inheritance. The *delegating type* (`H<'a>` in the first example) implicitely "inherits" methods (`hash`) of the *delegated trait* (`Hash`) from the *surrogate type* (`&'static str` which is the type of the *delegating expression* `self.name`) like a subclass inherits methods from its superclass(es). A fundamental difference is that the delegating type is not a subtype of the surrogate type in the sense of Liskov. There is no external link between the types. The surrogate may even be less visible than the delegating type. Another difference is that the developer has a total control on which part of the surrogate type to reuse whereas class hierarchy forces him/her to import the entire public interface of the superclass (this is because a superclass plays two roles: the role of the surrogate type and the role of the delegated trait).
+Let's compare this with inheritance. The *delegating type* (`H<'a>` in the first example) implicitely "inherits" methods (`hash`) of the *delegated trait* (`Hash`) from the *surrogate type* (`&'static str` which is the type of the *delegating expression* `self.name`) like a subclass inherits methods from its superclass(es). A fundamental difference is that the delegating type is not a subtype of the surrogate type in the sense of Liskov. There is no external link between the types. The surrogate may even be less visible than the delegating type. Another difference is that the developer has a total control on which part of the surrogate type to reuse whereas class hierarchy forces him/her to import the entire public interface of the superclass (this is because a superclass plays two roles: the role of the surrogate type and the role of the delegated trait).
 
-Other syntaxes have been proposed, including:
+### Syntax 2
+
+```rust
+impl<'a> Hash for H<'a> => self.name;
+
+impl Encodable for HighResolutionStamp => self.0;
+```
+
+### Syntax 3
+
+```rust
+impl<'a> H<'a> {
+    delegate Hash::* to self.name;
+}
+
+impl HighResolutionStamp {
+    delegate Encodable::* to self.0;
+}
+```
+
+### Syntax 4
+
 ```rust
 impl<'a> Hash for H<'a> use self.name {}
 
+impl Encodable for HighResolutionStamp use self.0 {}
+```
+
+### Syntax 5
+
+```rust
 #[delegate(self.name)]
 impl<'a> Hash for H<'a> {}
 
+#[delegate(self.0)]
+impl Encodable for HighResolutionStamp {}
+```
+
+### Syntax 6
+
+```rust
 #[delegate(field = name)]
 impl<'a> Hash for H<'a> {}
 
+#[delegate(field = 0)]
+impl Encodable for HighResolutionStamp {}
+```
+
+### Syntax 7
+
+```rust
 // on the type itself
 struct H<'a> {
     #[delegate(Hash)]
     name : &'static str,
     …
 }
+
+struct HighResolutionStamp(#[delegate(Encodable)] f64);
 ```
 
-## Partial delegation
+### Syntax 8
+
+```rust
+// on the type itself
+#[derive(Hash("self.name"))]
+struct H<'a> {
+    name : &'static str,
+    …
+}
+
+#[derive(Encodable("self.0"))]
+struct HighResolutionStamp(f64);
+```
+
+### Syntax 9
+
+```rust
+impl<'a> Hash for H<'a> as self.name;
+
+impl Encodable for HighResolutionStamp as self.0;
+```
+
+### Syntax 10
+
+```rust
+impl<'a> Hash for H<'a> via self.name;
+
+impl Encodable for HighResolutionStamp via self.0;
+```
+
+
+## Don't delegate this trait method, use my implementation
+
+Any trait methods added to the `impl` block will be used and will not be delegated.
+
+Syntaxes 2, 9 and 10 would have blocks added instead of a semicolon, like so:
+
+### Syntax 2
+
+```rust
+impl<'a> Hash for H<'a> => self.name {
+    //method definitions that will not be delegated go here
+}
+```
+
+
+## Method delegation
+
+Method delegation can be useful for:
+- explicit control and/or it's undesirable new default trait methods automatically implemented on the type
+- splitting the delegation across multiple fields, so some trait methods are delegated to field_a, some to field_b, etc.
+
+For single method traits, these delegations could be expressed on a single line if the style is deemed acceptable.
+
+```rust
+impl<'a> Hash for H<'a> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.name.hash(state)
+    }
+}
+
+impl Encodable for HighResolutionStamp {
+    fn encode<S: Encoder>(&self, s: &mut S) -> Result<(), S::Error> {
+        self.0.encode(s)
+    }
+}
+```
+
+### Syntax 1
+
+```rust
+impl<'a> Hash for H<'a> {
+    use self.name for hash;
+}
+
+impl Encodable for HighResolutionStamp {
+    use self.0 for encode;
+}
+```
+
+## Syntax 2
+
+```rust
+impl<'a> Hash for H<'a> {
+    fn hash = self.name.hash;
+}
+
+impl Encodable for HighResolutionStamp {
+    fn encode = self.0.encode;
+}
+```
+
+@cramertj raised this objection:  I'm not sure how often this would come up in practice, but method and field namespaces aren't shared, so a struct can have a method and a field with the same name:
+```rust
+struct MyStruct {
+    method: u8
+}
+
+impl MyStruct {
+    fn method(&self) -> u8 { 5 }
+}
+
+struct OuterType(MyStruct);
+
+// This would refer to the method, not the field:
+impl MyTrait for OuterType { fn method = self.0.method; }
+```
+That behavior seems kind of surprising to me.
+
+
+### Syntax 3
+
+```rust
+impl<'a> H<'a> {
+    delegate Hash::hash to self.name;
+}
+
+impl HighResolutionStamp {
+    delegate Encodable::encode to self.0;
+}
+```
+
+### Syntax 4
+
+Same as Syntax 1.
+
+### Syntax 5
+
+<!-- ```rust
+#[delegate(self.name)]
+impl<'a> Hash for H<'a> {}
+
+#[delegate(self.0)]
+impl Encodable for HighResolutionStamp {}
+``` -->
+
+### Syntax 6
+
+<!-- ```rust
+#[delegate(field = name)]
+impl<'a> Hash for H<'a> {}
+
+#[delegate(field = 0)]
+impl Encodable for HighResolutionStamp {}
+``` -->
+
+### Syntax 7
+
+<!-- ```rust
+// on the type itself
+struct H<'a> {
+    #[delegate(Hash)]
+    name : &'static str,
+    …
+}
+
+struct HighResolutionStamp(#[delegate(Encodable)] f64);
+``` -->
+
+### Syntax 8
+
+<!-- ```rust
+// on the type itself
+#[derive(Hash("self.name"))]
+struct H<'a> {
+    name : &'static str,
+    …
+}
+
+#[derive(Encodable("self.0"))]
+struct HighResolutionStamp(f64);
+``` -->
+
+### Syntax 9
+
+```rust
+impl<'a> Hash for H<'a> {
+    fn hash as self.name;
+}
+
+impl Encodable for HighResolutionStamp {
+    fn encode as self.0;
+}
+```
+
+### Syntax 10
+
+```rust
+impl<'a> Hash for H<'a> {
+    fn hash via self.name;
+}
+
+impl Encodable for HighResolutionStamp {
+    fn encode via self.0;
+}
+```
+
+
+## Delegating inherent methods - Privacy and Encapsulation
+
+While we imagine delegating traits will usually be the best practice, it could be valuable to do so with inherent `impl`s as well. This makes the language more consistent and preempts the questions: "Why can't I do this directly on my type? Why do I have to define a trait?"
+
+Let's take this opportunity to explore privacy and encapsulation using delegation, which also applies to delegating traits.
+
+```rust
+
+```
+
+
+## Delegating to arbitrary expressions (formerly partial delegation)
 
 If we consider this piece of code:
 ```rust
@@ -412,4 +686,19 @@ One of my concerns is that the arrival of inheritance in Rust may encourage bad 
 # Unresolved questions
 [unresolved]: #unresolved-questions
 
-The exact syntax is to be discussed. The proposed one is short but does not name the surrogate type explicitly which may hurt readability. As mentioned before plenty of alternate syntaxes have been proposed. I have personally no strong preference. However I would prefer we first agree on the scope and validity rules of delegation before bikeshedding about the exact final syntax.
+The proposed syntax is short but does not name the surrogate type explicitly which may hurt readability.
+
+## Syntax alternatives
+
+```rust
+- #[derive(PartialEq(“self.1.abs()”)]
+- struct MyType { #[delegate(MyTrait)] field: FieldType }
+- impl MyTrait for MyType as self.0
+- impl MyTrait for MyType via self.0
+- use impl self.name
+- use self.name impl
+- impl MyTrait for MyType { fn_name use self.field.fn_name }
+- impl MyType { delegate fn_name to self.field; delegate Vec::* to self.field; }
+- impl MyTrait for MyType => self.0;
+- impl MyTrait for MyType { fn method = self.field.method; }
+```
