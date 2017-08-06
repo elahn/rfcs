@@ -67,141 +67,15 @@ By providing syntax sugar for the composition pattern, it can remain/become a pr
 [comp_over_inh]: https://www.reddit.com/r/rust/comments/372mqw/how_do_i_composition_over_inheritance/
 [object_composition]: https://en.wikipedia.org/wiki/Composition_over_inheritance
 
-# Detailed design
-[design]: #detailed-design
+# Guide-level explanation
+[guide]: #guide
 
-## Delegate a trait impl to a struct field
+In Rust we prefer composition over inheritence for code reuse. For common cases, we make this convenient with delegation syntax sugar.
 
-Syntax sugar for the examples above:
+# Reference-level explanation
+[reference]: #reference
 
-### Syntax 1
-
-```rust
-impl<'a> Hash for H<'a> {
-    use self.name;
-}
-
-impl Encodable for HighResolutionStamp {
-    use self.0;
-}
-```
-
-Let's compare this with inheritance. The *delegating type* (`H<'a>` in the first example) implicitely "inherits" methods (`hash`) of the *delegated trait* (`Hash`) from the *surrogate type* (`&'static str` which is the type of the *delegating expression* `self.name`) like a subclass inherits methods from its superclass(es). A fundamental difference is that the delegating type is not a subtype of the surrogate type in the sense of Liskov. There is no external link between the types. The surrogate may even be less visible than the delegating type. Another difference is that the developer has a total control on which part of the surrogate type to reuse whereas class hierarchy forces him/her to import the entire public interface of the superclass (this is because a superclass plays two roles: the role of the surrogate type and the role of the delegated trait).
-
-### Syntax 2
-
-```rust
-impl<'a> Hash for H<'a> => self.name;
-
-impl Encodable for HighResolutionStamp => self.0;
-```
-
-### Syntax 3
-
-```rust
-impl<'a> H<'a> {
-    delegate Hash::* to self.name;
-}
-
-impl HighResolutionStamp {
-    delegate Encodable::* to self.0;
-}
-```
-
-### Syntax 4
-
-```rust
-impl<'a> Hash for H<'a> use self.name {}
-
-impl Encodable for HighResolutionStamp use self.0 {}
-```
-
-### Syntax 5
-
-```rust
-#[delegate(self.name)]
-impl<'a> Hash for H<'a> {}
-
-#[delegate(self.0)]
-impl Encodable for HighResolutionStamp {}
-```
-
-### Syntax 6
-
-```rust
-#[delegate(field = name)]
-impl<'a> Hash for H<'a> {}
-
-#[delegate(field = 0)]
-impl Encodable for HighResolutionStamp {}
-```
-
-### Syntax 7
-
-```rust
-// on the type itself
-struct H<'a> {
-    #[delegate(Hash)]
-    name : &'static str,
-    …
-}
-
-struct HighResolutionStamp(#[delegate(Encodable)] f64);
-```
-
-### Syntax 8
-
-```rust
-// on the type itself
-#[derive(Hash("self.name"))]
-struct H<'a> {
-    name : &'static str,
-    …
-}
-
-#[derive(Encodable("self.0"))]
-struct HighResolutionStamp(f64);
-```
-
-### Syntax 9
-
-```rust
-impl<'a> Hash for H<'a> as self.name;
-
-impl Encodable for HighResolutionStamp as self.0;
-```
-
-### Syntax 10
-
-```rust
-impl<'a> Hash for H<'a> via self.name;
-
-impl Encodable for HighResolutionStamp via self.0;
-```
-
-
-## Don't delegate this trait method, use my implementation
-
-Any trait methods added to the `impl` block will be used and will not be delegated.
-
-Syntaxes 2, 9 and 10 would have blocks added instead of a semicolon, like so:
-
-### Syntax 2
-
-```rust
-impl<'a> Hash for H<'a> => self.name {
-    //method definitions that will not be delegated go here
-}
-```
-
-
-## Method delegation
-
-Method delegation can be useful for:
-- explicit control and/or it's undesirable new default trait methods automatically implemented on the type
-- splitting the delegation across multiple fields, so some trait methods are delegated to field_a, some to field_b, etc.
-
-For single method traits, these delegations could be expressed on a single line if the style is deemed acceptable.
+Delegation is syntax sugar for common cases of the composition pattern. Given the code:
 
 ```rust
 impl<'a> Hash for H<'a> {
@@ -217,135 +91,47 @@ impl Encodable for HighResolutionStamp {
 }
 ```
 
-### Syntax 1
+## Delegate a trait impl to a struct field
+
+Syntax sugar to delegate all trait methods to a struct member with a type which implements the trait:
 
 ```rust
-impl<'a> Hash for H<'a> {
-    use self.name for hash;
-}
+impl<'a> Hash for H<'a> => self.name;
 
-impl Encodable for HighResolutionStamp {
-    use self.0 for encode;
+impl Encodable for HighResolutionStamp => self.0;
+```
+
+Let's compare this with inheritance. The *delegating type* (`H<'a>` in the first example) implicitely "inherits" methods (`hash`) of the *delegated trait* (`Hash`) from the *surrogate type* (`&'static str` which is the type of the *delegating expression* `self.name`) like a subclass inherits methods from its superclass(es). A fundamental difference is that the delegating type is not a subtype of the surrogate type in the sense of Liskov. There is no external link between the types. The surrogate may even be less visible than the delegating type. Another difference is that the developer has a total control on which part of the surrogate type to reuse whereas class hierarchy forces him/her to import the entire public interface of the superclass (this is because a superclass plays two roles: the role of the surrogate type and the role of the delegated trait).
+
+
+## Don't delegate this trait method, use my implementation
+
+Any trait methods added to the `impl` block will be used and will not be delegated.
+
+```rust
+impl<'a> Hash for H<'a> => self.name {
+    //method definitions that will not be delegated go here
 }
 ```
 
-## Syntax 2
+## Method delegation
+
+Method delegation can be useful for:
+- explicit control and/or it's undesirable new default trait methods automatically implemented on the type
+- splitting the delegation across multiple fields, so some trait methods are delegated to field_a, some to field_b, etc.
+
+For single method traits, these delegations could be expressed on a single line if the style is deemed acceptable.
 
 ```rust
 impl<'a> Hash for H<'a> {
     fn hash = self.name.hash;
 }
-
+```
+```rust
 impl Encodable for HighResolutionStamp {
     fn encode = self.0.encode;
 }
 ```
-
-@cramertj raised this objection:  I'm not sure how often this would come up in practice, but method and field namespaces aren't shared, so a struct can have a method and a field with the same name:
-```rust
-struct MyStruct {
-    method: u8
-}
-
-impl MyStruct {
-    fn method(&self) -> u8 { 5 }
-}
-
-struct OuterType(MyStruct);
-
-// This would refer to the method, not the field:
-impl MyTrait for OuterType { fn method = self.0.method; }
-```
-That behavior seems kind of surprising to me.
-
-
-### Syntax 3
-
-```rust
-impl<'a> H<'a> {
-    delegate Hash::hash to self.name;
-}
-
-impl HighResolutionStamp {
-    delegate Encodable::encode to self.0;
-}
-```
-
-### Syntax 4
-
-Same as Syntax 1.
-
-### Syntax 5
-
-<!-- ```rust
-#[delegate(self.name)]
-impl<'a> Hash for H<'a> {}
-
-#[delegate(self.0)]
-impl Encodable for HighResolutionStamp {}
-``` -->
-
-### Syntax 6
-
-<!-- ```rust
-#[delegate(field = name)]
-impl<'a> Hash for H<'a> {}
-
-#[delegate(field = 0)]
-impl Encodable for HighResolutionStamp {}
-``` -->
-
-### Syntax 7
-
-<!-- ```rust
-// on the type itself
-struct H<'a> {
-    #[delegate(Hash)]
-    name : &'static str,
-    …
-}
-
-struct HighResolutionStamp(#[delegate(Encodable)] f64);
-``` -->
-
-### Syntax 8
-
-<!-- ```rust
-// on the type itself
-#[derive(Hash("self.name"))]
-struct H<'a> {
-    name : &'static str,
-    …
-}
-
-#[derive(Encodable("self.0"))]
-struct HighResolutionStamp(f64);
-``` -->
-
-### Syntax 9
-
-```rust
-impl<'a> Hash for H<'a> {
-    fn hash as self.name;
-}
-
-impl Encodable for HighResolutionStamp {
-    fn encode as self.0;
-}
-```
-
-### Syntax 10
-
-```rust
-impl<'a> Hash for H<'a> {
-    fn hash via self.name;
-}
-
-impl Encodable for HighResolutionStamp {
-    fn encode via self.0;
-}
-```
-
 
 ## Delegating inherent methods - Privacy and Encapsulation
 
@@ -655,6 +441,8 @@ However this kind of delegation for value-dependent surrogate types has a limita
 
 * It creates some implicit code reuse. This is an intended feature but it could also be considered as dangerous. Modifying traits and surrogate types may automatically import new methods in delegating types with no compiler warning even in cases it is not appropriate (but this issue is the same as modifying a superclass in OOP).
 * The benefit may be considered limited for one-method traits.
+* A concern with the syntax is explained in [unresolved questions](#unresolved-questions).
+
 
 # Alternatives
 [alternatives]: #alternatives
@@ -679,16 +467,14 @@ I was suggested to write a compiler plugin. But I was also told that [type infor
 
 ## Do nothing
 
-In the end, it is a syntactic sugar. It just improves the ease of expression, not the capacity to express more concepts. Some simple cases may be handled with deref, others with trait default methods.
+In the end, it is syntactic sugar. It just improves the ease of expression, not the capacity to express more concepts. Some simple cases may be handled with deref, others with trait default methods.
 
 One of my concerns is that the arrival of inheritance in Rust may encourage bad habits. Developers are lazy and DRY principle dissuades them from writing repetitive code. The temptation may be strong to overuse inheritance in situations where only code reuse is required (resulting in unnecessary subtyping hierarchy and uncontrolled interface exposure).
 
 # Unresolved questions
 [unresolved]: #unresolved-questions
 
-The proposed syntax is short but does not name the surrogate type explicitly which may hurt readability.
-
-## Syntax alternatives
+@cramertj has requested the desired syntax be selected before accepting this RFC, since it is entirely syntax sugar. Here are some of the suggestions so far, let the bikeshedding begin!
 
 ```rust
 - #[derive(PartialEq(“self.1.abs()”)]
@@ -702,3 +488,254 @@ The proposed syntax is short but does not name the surrogate type explicitly whi
 - impl MyTrait for MyType => self.0;
 - impl MyTrait for MyType { fn method = self.field.method; }
 ```
+
+## Delegate a trait impl to a struct field
+
+## Method delegation
+
+```rust
+impl<'a> Hash for H<'a> {
+    fn hash = self.name.hash;
+}
+```
+```rust
+impl Encodable for HighResolutionStamp {
+    fn encode = self.0.encode;
+}
+```
+
+@cramertj raised a concern with this syntax:
+
+> I'm not sure how often this would come up in practice, but method and field namespaces aren't shared, so a struct can have a method and a field with the same name:
+
+```rust
+struct MyStruct {
+    method: u8
+}
+
+impl MyStruct {
+    fn method(&self) -> u8 { 5 }
+}
+
+struct OuterType(MyStruct);
+
+// This would refer to the method, not the field:
+impl MyTrait for OuterType { fn method = self.0.method; }
+```
+> That behavior seems kind of surprising to me.
+
+
+### Original RFC Syntax
+
+```rust
+impl<'a> Hash for H<'a> {
+    use self.name;
+}
+
+impl Encodable for HighResolutionStamp {
+    use self.0;
+}
+```
+
+### Alternative Syntax 2
+
+
+### Alternative Syntax 3
+
+```rust
+impl<'a> H<'a> {
+    delegate Hash::* to self.name;
+}
+
+impl HighResolutionStamp {
+    delegate Encodable::* to self.0;
+}
+```
+
+### Alternative Syntax 4
+
+```rust
+impl<'a> Hash for H<'a> use self.name {}
+
+impl Encodable for HighResolutionStamp use self.0 {}
+```
+
+### Alternative Syntax 5
+
+```rust
+#[delegate(self.name)]
+impl<'a> Hash for H<'a> {}
+
+#[delegate(self.0)]
+impl Encodable for HighResolutionStamp {}
+```
+
+### Alternative Syntax 6
+
+```rust
+#[delegate(field = name)]
+impl<'a> Hash for H<'a> {}
+
+#[delegate(field = 0)]
+impl Encodable for HighResolutionStamp {}
+```
+
+### Alternative Syntax 7
+
+```rust
+// on the type itself
+struct H<'a> {
+    #[delegate(Hash)]
+    name : &'static str,
+    …
+}
+
+struct HighResolutionStamp(#[delegate(Encodable)] f64);
+```
+
+### Alternative Syntax 8
+
+```rust
+// on the type itself
+#[derive(Hash("self.name"))]
+struct H<'a> {
+    name : &'static str,
+    …
+}
+
+#[derive(Encodable("self.0"))]
+struct HighResolutionStamp(f64);
+```
+
+### Alternative Syntax 9
+
+```rust
+impl<'a> Hash for H<'a> as self.name;
+
+impl Encodable for HighResolutionStamp as self.0;
+```
+
+### Alternative Syntax 10
+
+```rust
+impl<'a> Hash for H<'a> via self.name;
+
+impl Encodable for HighResolutionStamp via self.0;
+```
+
+
+## Don't delegate this trait method, use my implementation
+
+Syntaxes 9 and 10 would have blocks added instead of a semicolon, like in the reference-level explanation:
+
+```rust
+impl<'a> Hash for H<'a> => self.name {
+    //method definitions that will not be delegated go here
+}
+```
+
+## Method delegation
+
+### Original RFC Syntax
+
+```rust
+impl<'a> Hash for H<'a> {
+    use self.name for hash;
+}
+
+impl Encodable for HighResolutionStamp {
+    use self.0 for encode;
+}
+```
+
+### Alternative Syntax 2
+
+### Alternative Syntax 3
+
+```rust
+impl<'a> H<'a> {
+    delegate Hash::hash to self.name;
+}
+
+impl HighResolutionStamp {
+    delegate Encodable::encode to self.0;
+}
+```
+
+### Alternative Syntax 4
+
+Same as Syntax 1.
+
+### Alternative Syntax 5
+
+<!-- ```rust
+#[delegate(self.name)]
+impl<'a> Hash for H<'a> {}
+
+#[delegate(self.0)]
+impl Encodable for HighResolutionStamp {}
+``` -->
+
+### Alternative Syntax 6
+
+<!-- ```rust
+#[delegate(field = name)]
+impl<'a> Hash for H<'a> {}
+
+#[delegate(field = 0)]
+impl Encodable for HighResolutionStamp {}
+``` -->
+
+### Alternative Syntax 7
+
+<!-- ```rust
+// on the type itself
+struct H<'a> {
+    #[delegate(Hash)]
+    name : &'static str,
+    …
+}
+
+struct HighResolutionStamp(#[delegate(Encodable)] f64);
+``` -->
+
+### Alternative Syntax 8
+
+<!-- ```rust
+// on the type itself
+#[derive(Hash("self.name"))]
+struct H<'a> {
+    name : &'static str,
+    …
+}
+
+#[derive(Encodable("self.0"))]
+struct HighResolutionStamp(f64);
+``` -->
+
+### Alternative Syntax 9
+
+```rust
+impl<'a> Hash for H<'a> {
+    fn hash as self.name;
+}
+```
+```rust
+impl Encodable for HighResolutionStamp {
+    fn encode as self.0;
+}
+```
+
+### Alternative Syntax 10
+
+```rust
+impl<'a> Hash for H<'a> {
+    fn hash via self.name;
+}
+```
+```rust
+impl Encodable for HighResolutionStamp {
+    fn encode via self.0;
+}
+```
+
