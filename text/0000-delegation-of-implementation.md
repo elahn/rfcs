@@ -140,8 +140,14 @@ While we imagine delegating traits will usually be the best practice, it could b
 Let's take this opportunity to explore privacy and encapsulation using delegation, which also applies to delegating traits.
 
 ```rust
+struct AppendOnlyVec<T> (Vec<T>);
 
+impl<T> AppendOnlyVec<T> {
+    delegate fn push to self.0;
+    // other meaningful methods
+}
 ```
+This is an example of a "restricted type" without using a trait. We can easily delegate the methods we want to the inner Vec, thereby restricting access to functionality we don't want to expose.
 
 
 ## Delegating to arbitrary expressions (formerly partial delegation)
