@@ -512,19 +512,6 @@ One of my concerns is that the arrival of inheritance in Rust may encourage bad 
 
 ## Delegate a trait impl to a struct field
 
-## Method delegation
-
-```rust
-impl<'a> Hash for H<'a> {
-    fn hash = self.name.hash;
-}
-```
-```rust
-impl Encodable for HighResolutionStamp {
-    fn encode = self.0.encode;
-}
-```
-
 ### Original RFC Syntax
 
 ```rust
