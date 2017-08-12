@@ -20,14 +20,6 @@ impl<'a> Hash for H<'a> {
     }
 }
 ```
-```rust
-// from servo/components/devtools/actors/timeline.rs
-impl Encodable for HighResolutionStamp {
-    fn encode<S: Encoder>(&self, s: &mut S) -> Result<(), S::Error> {
-        self.0.encode(s)
-    }
-}
-```
 We can see a recurring pattern where the implementation of a method only consists in applying the same method to a subfield or more generally to an expression containing `self`. Those are examples of the well known [composition pattern][object_composition]. It has a lot of advantages, but unfortunately requires writing boilerplate code again and again. In a classical OOP language we could also have opted for inheritance for similar cases. Inheritance comes with its own bunch of problems and limitations but at least it allows a straightforward form of code reuse: any subclass implicitly imports the public methods of its superclass(es).
 
 One of the issues frequently mentioned when newcomers are learning Rust, is "I can do this easily in OOP, but is it even possible in Rust? And how the heck do I do it?" The lack of documentation/guides on this is a known issue and is being worked on, but it's not *just* a documentation issue.
@@ -83,12 +75,6 @@ impl<'a> Hash for H<'a> {
         self.name.hash(state)
     }
 }
-
-impl Encodable for HighResolutionStamp {
-    fn encode<S: Encoder>(&self, s: &mut S) -> Result<(), S::Error> {
-        self.0.encode(s)
-    }
-}
 ```
 
 ## Delegate a trait impl to a struct field
@@ -97,8 +83,6 @@ Syntax sugar to delegate all trait methods to a struct member with a type which 
 
 ```rust
 impl<'a> Hash for H<'a> => self.name;
-
-impl Encodable for HighResolutionStamp => self.0;
 ```
 
 Let's compare this with inheritance. The *delegating type* (`H<'a>` in the first example) implicitely "inherits" methods (`hash`) of the *delegated trait* (`Hash`) from the *surrogate type* (`&'static str` which is the type of the *delegating expression* `self.name`) like a subclass inherits methods from its superclass(es). A fundamental difference is that the delegating type is not a subtype of the surrogate type in the sense of Liskov. There is no external link between the types. The surrogate may even be less visible than the delegating type. Another difference is that the developer has a total control on which part of the surrogate type to reuse whereas class hierarchy forces him/her to import the entire public interface of the superclass (this is because a superclass plays two roles: the role of the surrogate type and the role of the delegated trait).
@@ -125,11 +109,6 @@ For single method traits, these delegations could be expressed on a single line 
 ```rust
 impl<'a> Hash for H<'a> {
     fn hash = self.name.hash();
-}
-```
-```rust
-impl Encodable for HighResolutionStamp {
-    fn encode = self.0.encode();
 }
 ```
 The parenthesis at the end of the method name, e.g. `encode()` are left empty and are filled in with the arguments passed in. They are there to disambiguate between field and method names, which exist in separate namespaces. Without parenthesis, code like this could be confusing:
@@ -518,18 +497,12 @@ One of my concerns is that the arrival of inheritance in Rust may encourage bad 
 impl<'a> Hash for H<'a> {
     use self.name;
 }
-
-impl Encodable for HighResolutionStamp {
-    use self.0;
-}
 ```
 
 ### Alternative Syntax 1
 
 ```rust
 impl<'a> Hash for H<'a> { delegate to self.name; }
-
-impl Encodable for HighResolutionStamp { delegate to self.0; }
 ```
 
 ### Alternative Syntax 2
@@ -537,10 +510,6 @@ impl Encodable for HighResolutionStamp { delegate to self.0; }
 ```rust
 impl<'a> H<'a> {
     delegate Hash to self.name;
-}
-
-impl HighResolutionStamp {
-    delegate Encodable to self.0;
 }
 ```
 
@@ -550,18 +519,12 @@ impl HighResolutionStamp {
 impl<'a> H<'a> {
     delegate Hash::* to self.name;
 }
-
-impl HighResolutionStamp {
-    delegate Encodable::* to self.0;
-}
 ```
 
 ### Alternative Syntax 4
 
 ```rust
 impl<'a> Hash for H<'a> use self.name {}
-
-impl Encodable for HighResolutionStamp use self.0 {}
 ```
 
 ### Alternative Syntax 5
@@ -569,9 +532,6 @@ impl Encodable for HighResolutionStamp use self.0 {}
 ```rust
 #[delegate(self.name)]
 impl<'a> Hash for H<'a> {}
-
-#[delegate(self.0)]
-impl Encodable for HighResolutionStamp {}
 ```
 
 ### Alternative Syntax 6
@@ -579,9 +539,6 @@ impl Encodable for HighResolutionStamp {}
 ```rust
 #[delegate(field = name)]
 impl<'a> Hash for H<'a> {}
-
-#[delegate(field = 0)]
-impl Encodable for HighResolutionStamp {}
 ```
 
 ### Alternative Syntax 7
@@ -593,8 +550,6 @@ struct H<'a> {
     name : &'static str,
     …
 }
-
-struct HighResolutionStamp(#[delegate(Encodable)] f64);
 ```
 
 ### Alternative Syntax 8
@@ -606,25 +561,18 @@ struct H<'a> {
     name : &'static str,
     …
 }
-
-#[derive(Encodable("self.0"))]
-struct HighResolutionStamp(f64);
 ```
 
 ### Alternative Syntax 9
 
 ```rust
 impl<'a> Hash for H<'a> as self.name;
-
-impl Encodable for HighResolutionStamp as self.0;
 ```
 
 ### Alternative Syntax 10
 
 ```rust
 impl<'a> Hash for H<'a> via self.name;
-
-impl Encodable for HighResolutionStamp via self.0;
 ```
 
 
@@ -646,10 +594,6 @@ impl<'a> Hash for H<'a> => self.name {
 impl<'a> Hash for H<'a> {
     use self.name for hash;
 }
-
-impl Encodable for HighResolutionStamp {
-    use self.0 for encode;
-}
 ```
 
 ### Alternative Syntax 1
@@ -657,10 +601,6 @@ impl Encodable for HighResolutionStamp {
 ```rust
 impl<'a> Hash for H<'a> {
     delegate fn hash() to self.name;
-}
-
-impl Encodable for HighResolutionStamp {
-    delegate fn encode() to self.0;
 }
 ```
 
@@ -670,10 +610,6 @@ impl Encodable for HighResolutionStamp {
 impl<'a> H<'a> {
     delegate Hash::hash() to self.name.hash();
 }
-
-impl HighResolutionStamp {
-    delegate Encodable::encode() to self.0.hash();
-}
 ```
 
 ### Alternative Syntax 3
@@ -681,10 +617,6 @@ impl HighResolutionStamp {
 ```rust
 impl<'a> H<'a> {
     delegate Hash::hash to self.name;
-}
-
-impl HighResolutionStamp {
-    delegate Encodable::encode to self.0;
 }
 ```
 
@@ -697,9 +629,6 @@ Same as Syntax 1.
 <!-- ```rust
 #[delegate(self.name)]
 impl<'a> Hash for H<'a> {}
-
-#[delegate(self.0)]
-impl Encodable for HighResolutionStamp {}
 ``` -->
 
 ### Alternative Syntax 6
@@ -707,9 +636,6 @@ impl Encodable for HighResolutionStamp {}
 <!-- ```rust
 #[delegate(field = name)]
 impl<'a> Hash for H<'a> {}
-
-#[delegate(field = 0)]
-impl Encodable for HighResolutionStamp {}
 ``` -->
 
 ### Alternative Syntax 7
@@ -721,8 +647,6 @@ struct H<'a> {
     name : &'static str,
     …
 }
-
-struct HighResolutionStamp(#[delegate(Encodable)] f64);
 ``` -->
 
 ### Alternative Syntax 8
@@ -734,9 +658,6 @@ struct H<'a> {
     name : &'static str,
     …
 }
-
-#[derive(Encodable("self.0"))]
-struct HighResolutionStamp(f64);
 ``` -->
 
 ### Alternative Syntax 9
@@ -744,11 +665,6 @@ struct HighResolutionStamp(f64);
 ```rust
 impl<'a> Hash for H<'a> {
     fn hash as self.name;
-}
-```
-```rust
-impl Encodable for HighResolutionStamp {
-    fn encode as self.0;
 }
 ```
 
@@ -759,9 +675,3 @@ impl<'a> Hash for H<'a> {
     fn hash via self.name;
 }
 ```
-```rust
-impl Encodable for HighResolutionStamp {
-    fn encode via self.0;
-}
-```
-
